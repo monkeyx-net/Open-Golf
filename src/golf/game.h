@@ -46,7 +46,7 @@ typedef struct golf_game {
     struct {
         bool auto_rotate;
         float angle, start_angle, start_angle_velocity, angle_velocity;
-        float height; // above the ball; the port moves it with L2/R2
+        float height; // above the ball (also sets the distance back); L2/R2 on the port
     } cam;
 
     struct {

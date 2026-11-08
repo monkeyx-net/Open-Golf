@@ -5,7 +5,7 @@
 //   A                   click (in game: grab the ball, pull back, release to shoot)
 //   B                   cancel the shot / back
 //   L1/R1, right stick  rotate the camera (right stick up/down scrolls lists)
-//   L2/R2               lower / raise the camera
+//   L2/R2               zoom the camera in / out
 //   Start               pause / resume
 #include <math.h>
 #include <stdlib.h>
