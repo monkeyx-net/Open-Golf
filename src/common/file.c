@@ -121,10 +121,10 @@ golf_file_t golf_file_append_extension(const char *path, const char *ext) {
     int path_len = (int) strlen(file.path);
     int name_len = (int) strlen(file.name);
 
-    strncpy(file.path + path_len, ext, GOLF_FILE_MAX_PATH);
+    strncpy(file.path + path_len, ext, GOLF_FILE_MAX_PATH - path_len);
     file.path[GOLF_FILE_MAX_PATH - 1] = 0;
 
-    strncpy(file.name + name_len, ext, GOLF_FILE_MAX_NAME);
+    strncpy(file.name + name_len, ext, GOLF_FILE_MAX_NAME - name_len);
     file.name[GOLF_FILE_MAX_NAME - 1] = 0;
 
     strncpy(file.ext, ext, GOLF_FILE_MAX_EXT);

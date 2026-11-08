@@ -1266,7 +1266,7 @@ static void _golf_ui_in_game(float dt) {
 void golf_ui_update(float dt) {
     ui.draw_entities.length = 0;
 
-#if GOLF_PLATFORM_WINDOWS || GOLF_PLATFORM_LINUX
+#if (GOLF_PLATFORM_WINDOWS || GOLF_PLATFORM_LINUX) && !GOLF_PORTMASTER
     {
         golf_ui_layout_t *layout = golf_data_get_ui_layout("data/ui/ui.ui");
         golf_ui_layout_entity_t *entity;

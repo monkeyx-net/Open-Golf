@@ -3222,6 +3222,9 @@ static void _golf_data_handle_file(const char *file_path, void *udata) {
         return;
     }
 
+#ifndef GOLF_PORTMASTER
+    // The port ships the imported .golf_data files and never re-imports
+    // (shader import runs tools/glslcc).
     _data_loader_t *loader = _get_data_loader(file.ext);
     if (loader && loader->import_fn) {
         golf_file_t import_file = golf_file_append_extension(file_path, ".golf_data");
@@ -3237,6 +3240,7 @@ static void _golf_data_handle_file(const char *file_path, void *udata) {
             }
         }
     }
+#endif
 
     uint64_t *last_file_time = map_get(&_file_time_map, file_path);
     if (!last_file_time) {
@@ -3357,7 +3361,9 @@ static golf_thread_result_t _golf_data_thread_fn(void *udata) {
 
     vec_golf_file_t files_to_load;
     vec_init(&files_to_load, "data_thread");
+#ifndef GOLF_PORTMASTER
     uint64_t last_run_time = stm_now();
+#endif
 
     while (true) {
         files_to_load.length = 0;
@@ -3375,12 +3381,15 @@ static golf_thread_result_t _golf_data_thread_fn(void *udata) {
 
         golf_thread_timer_wait(&_data_thread_timer, 10000000);
 
+#ifndef GOLF_PORTMASTER
+        // Hot reload: re-scan data/ every second (not on the port).
         double time_since_last_run = stm_sec(stm_since(last_run_time));
         if (time_since_last_run > 1) {
             bool push_events = true;
             golf_dir_recurse("data", _golf_data_handle_file, &push_events); 
             last_run_time = stm_now();
         }
+#endif
     }
     return GOLF_THREAD_RESULT_SUCCESS;
 }

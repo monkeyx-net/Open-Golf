@@ -7,10 +7,29 @@ set(GOLF_LIBRARIES
     miniz
     parson
     sokol
-    stb
-    xatlas)
+    stb)
+if(NOT GOLF_PORTMASTER)
+    set(GOLF_LIBRARIES ${GOLF_LIBRARIES} xatlas)
+endif()
 
-if(CMAKE_SYSTEM_NAME STREQUAL Android)
+if(GOLF_PORTMASTER)
+    find_package(SDL2 REQUIRED)
+    add_executable(golf
+        draw.c
+        game.c
+        golf.c
+        main_sdl.c
+        ui.c)
+    target_include_directories(golf PRIVATE ${SDL2_INCLUDE_DIRS})
+    target_link_libraries(golf PRIVATE
+        ${GOLF_LIBRARIES}
+        ${SDL2_LIBRARIES}
+        -lGLESv2
+        -lasound
+        -ldl
+        -lpthread
+        -lm)
+elseif(CMAKE_SYSTEM_NAME STREQUAL Android)
     set(GOLF_LIBRARIES
         ${GOLF_LIBRARIES}
         GLESv3

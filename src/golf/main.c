@@ -82,6 +82,7 @@ static void event(const sapp_event *event) {
     golf_inputs_handle_event(event);
 }
 
+#ifndef GOLF_PORTMASTER
 sapp_desc sokol_main(int argc, char *argv[]) {
     GOLF_UNUSED(argc);
     GOLF_UNUSED(argv);
@@ -106,3 +107,4 @@ sapp_desc sokol_main(int argc, char *argv[]) {
             .swap_interval = 1,
     };
 }
+#endif
