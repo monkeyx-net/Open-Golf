@@ -5,7 +5,9 @@
 #include <GLES3/gl3.h>
 #endif
 #define SOKOL_IMPL
+#ifndef GOLF_PORTMASTER
 #include "sokol/sokol_audio.h"
+#endif
 #include "sokol/sokol_gfx.h"
 #include "sokol/sokol_time.h"
 

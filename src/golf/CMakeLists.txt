@@ -13,19 +13,16 @@ if(NOT GOLF_PORTMASTER)
 endif()
 
 if(GOLF_PORTMASTER)
-    find_package(SDL2 REQUIRED)
     add_executable(golf
         draw.c
         game.c
         golf.c
         main_sdl.c
         ui.c)
-    target_include_directories(golf PRIVATE ${SDL2_INCLUDE_DIRS})
     target_link_libraries(golf PRIVATE
         ${GOLF_LIBRARIES}
         ${SDL2_LIBRARIES}
         -lGLESv2
-        -lasound
         -ldl
         -lpthread
         -lm)
