@@ -8,8 +8,10 @@
 //   B                   cancel the putt / back
 //   L1/R1, right stick  rotate the camera
 //   L2/R2               zoom the camera in / out
-// Aiming still uses the game's mouse code: a hidden pointer is put on the
-// ball while A is held and moved with the stick.
+// Aiming still uses the game's mouse code: while A is held a hidden pointer
+// is kept at ball + pull, where pull (in screen pixels) is set with the
+// stick: along the pull it changes the power and cannot pass through the
+// ball, sideways it turns the aim.
 #include <math.h>
 #include <stdlib.h>
 
@@ -20,6 +22,8 @@
 static int win_w, win_h;
 static float cursor_x, cursor_y;
 static uint64_t frame_count;
+static float aim_len, aim_dir_x, aim_dir_y; // pull from the ball while aiming
+static bool aim_dir_set;
 
 int sapp_width(void) { return win_w; }
 int sapp_height(void) { return win_h; }
@@ -81,6 +85,46 @@ static void move_cursor_to_ball(void) {
     move_cursor(p.x, p.y);
 }
 
+static void start_aim(void) {
+    aim_len = 0;
+    aim_dir_x = 0;
+    aim_dir_y = 1; // straight back: shoots forward
+    aim_dir_set = false;
+    move_cursor_to_ball();
+}
+
+// Pull length that gives full power: the game scales the pull by
+// 1.777 * 720 / screen height and caps it at aim_max_length.
+static float aim_max_len(void) {
+    golf_config_t *cfg = golf_data_get_config("data/config/game.cfg");
+    return CFG_NUM(cfg, "aim_max_length") * win_h / (1.777f * 720.0f);
+}
+
+static void update_aim(float dx, float dy, float dt) {
+    float speed = 0.45f * win_h * dt;
+    dx *= speed;
+    dy *= speed;
+    if (!aim_dir_set && (dx != 0 || dy != 0)) {
+        // the first push picks the direction
+        float l = sqrtf(dx * dx + dy * dy);
+        aim_dir_x = dx / l;
+        aim_dir_y = dy / l;
+        aim_dir_set = true;
+    }
+    float along = dx * aim_dir_x + dy * aim_dir_y;
+    float across = dx * -aim_dir_y + dy * aim_dir_x;
+    aim_len = fminf(fmaxf(aim_len + along, 0), aim_max_len());
+    // turn the aim; a short pull turns slower than its radius suggests
+    float turn = across / fmaxf(aim_len, 0.15f * win_h);
+    float c = cosf(turn), s = sinf(turn);
+    float x = aim_dir_x * c - aim_dir_y * s;
+    float y = aim_dir_x * s + aim_dir_y * c;
+    aim_dir_x = x;
+    aim_dir_y = y;
+    vec2 ball = golf_graphics_world_to_screen(golf_game_get()->ball.pos);
+    move_cursor(ball.x + aim_dir_x * aim_len, ball.y + aim_dir_y * aim_len);
+}
+
 // Releases the hidden pointer: putts, or cancels if it is on the ball. It must
 // stay where it is: the game reads the aim from it on the next frame.
 static void release_cursor(void) {
@@ -94,7 +138,7 @@ static void pad_button(SDL_GameControllerButton button, bool down) {
                 if (down) golf_ui_nav_input(0, 0, true);
             }
             else if (down && in_game_state(GOLF_GAME_STATE_WAITING_FOR_AIM)) {
-                move_cursor_to_ball();
+                start_aim();
                 send_event(SAPP_EVENTTYPE_MOUSE_DOWN, SAPP_MOUSEBUTTON_LEFT);
             }
             else if (!down) {
@@ -105,6 +149,7 @@ static void pad_button(SDL_GameControllerButton button, bool down) {
             if (!down) break;
             if (in_game_state(GOLF_GAME_STATE_AIMING)) {
                 // Zero power: releasing on the ball goes back to waiting for aim.
+                aim_len = 0;
                 move_cursor_to_ball();
                 release_cursor();
             }
@@ -159,11 +204,8 @@ static void pad_update(SDL_GameController *pad, float dt) {
         repeat_t = 0.12f;
     }
 
-    // Aiming: pull the hidden pointer back from the ball.
-    if (in_game_state(GOLF_GAME_STATE_AIMING) && (dx != 0 || dy != 0)) {
-        float speed = 0.45f * win_h;
-        move_cursor(fminf(fmaxf(cursor_x + dx * speed * dt, 0), (float)(win_w - 1)),
-                fminf(fmaxf(cursor_y + dy * speed * dt, 0), (float)(win_h - 1)));
+    if (in_game_state(GOLF_GAME_STATE_AIMING)) {
+        update_aim(dx, dy, dt);
     }
 
     bool playing = in_game_state(GOLF_GAME_STATE_WAITING_FOR_AIM) ||

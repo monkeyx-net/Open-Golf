@@ -674,6 +674,10 @@ static void _golf_ui_aim_circle_name(golf_ui_layout_t *layout, const char *name,
             *aim_delta = delta;
         }
 
+#ifndef GOLF_PORTMASTER
+        // Aiming sideways turns the camera (lets a finger aim behind). With a
+        // stick the pull stays sideways and the camera spins; the port turns
+        // the camera with L1/R1 instead.
         if (game->aim_line.power > 0) {
             float min_angle = golf_config_get_num(game_cfg, "aim_rotate_min_angle");
             float max_angle = golf_config_get_num(game_cfg, "aim_rotate_max_angle");
@@ -691,6 +695,7 @@ static void _golf_ui_aim_circle_name(golf_ui_layout_t *layout, const char *name,
                 game->cam.angle += rotate_speed * a * dt;
             }
         }
+#endif
     }
 
     for (int i = 0; i < num_squares; i++) {
