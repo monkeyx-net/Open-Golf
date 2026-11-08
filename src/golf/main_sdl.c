@@ -81,11 +81,10 @@ static void move_cursor_to_ball(void) {
     move_cursor(p.x, p.y);
 }
 
-// Releases the hidden pointer (putts, or cancels if it is on the ball) and
-// parks it off screen.
+// Releases the hidden pointer: putts, or cancels if it is on the ball. It must
+// stay where it is: the game reads the aim from it on the next frame.
 static void release_cursor(void) {
     send_event(SAPP_EVENTTYPE_MOUSE_UP, SAPP_MOUSEBUTTON_LEFT);
-    move_cursor(-10000, -10000);
 }
 
 static void pad_button(SDL_GameControllerButton button, bool down) {
