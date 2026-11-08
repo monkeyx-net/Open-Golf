@@ -1,12 +1,15 @@
 // PortMaster platform layer: SDL2 window with a GLES 3.0 context instead of
-// sokol_app (X11/GLX). Mouse events are passed through unchanged; a gamepad
-// drives a virtual mouse cursor:
-//   left stick / D-pad  move the cursor
-//   A                   click (in game: grab the ball, pull back, release to shoot)
-//   B                   cancel the shot / back
-//   L1/R1, right stick  rotate the camera (right stick up/down scrolls lists)
+// sokol_app (X11/GLX), driven by a gamepad:
+//   D-pad / left stick  move between menu buttons; pull back while aiming
+//   A                   press the button (in game: hold to grab the ball,
+//                       pull back, release to putt)
+//   Start               press the button on the title / level select /
+//                       finished screens; pause / resume in game
+//   B                   cancel the putt / back
+//   L1/R1, right stick  rotate the camera
 //   L2/R2               zoom the camera in / out
-//   Start               pause / resume
+// Aiming still uses the game's mouse code: a hidden pointer is put on the
+// ball while A is held and moved with the stick.
 #include <math.h>
 #include <stdlib.h>
 
@@ -14,13 +17,9 @@
 
 #include "golf/main.c"
 
-#define CIMGUI_DEFINE_ENUMS_AND_STRUCTS
-#include "cimgui/cimgui.h"
-
 static int win_w, win_h;
 static float cursor_x, cursor_y;
 static uint64_t frame_count;
-static bool using_pad;
 
 int sapp_width(void) { return win_w; }
 int sapp_height(void) { return win_h; }
@@ -39,14 +38,13 @@ sg_context_desc sapp_sgcontext(void) {
     };
 }
 
-static void send_event(sapp_event_type type, sapp_mousebutton button, float scroll_y) {
+static void send_event(sapp_event_type type, sapp_mousebutton button) {
     sapp_event ev = {
         .frame_count = frame_count,
         .type = type,
         .mouse_button = button,
         .mouse_x = cursor_x,
         .mouse_y = cursor_y,
-        .scroll_y = scroll_y,
         .window_width = win_w,
         .window_height = win_h,
         .framebuffer_width = win_w,
@@ -66,28 +64,50 @@ static bool in_game_state(golf_game_state_t state) {
     return golf_get()->state == GOLF_STATE_IN_GAME && golf_game_get()->state == state;
 }
 
+// Screens with buttons: title (Play), level select, pause and finished menus.
+static bool in_menu(void) {
+    return golf_get()->state == GOLF_STATE_MAIN_MENU ||
+        in_game_state(GOLF_GAME_STATE_PAUSED) || in_game_state(GOLF_GAME_STATE_FINISHED);
+}
+
+static void move_cursor(float x, float y) {
+    cursor_x = x;
+    cursor_y = y;
+    send_event(SAPP_EVENTTYPE_MOUSE_MOVE, SAPP_MOUSEBUTTON_INVALID);
+}
+
 static void move_cursor_to_ball(void) {
     vec2 p = golf_graphics_world_to_screen(golf_game_get()->ball.pos);
-    cursor_x = p.x;
-    cursor_y = p.y;
-    send_event(SAPP_EVENTTYPE_MOUSE_MOVE, SAPP_MOUSEBUTTON_INVALID, 0);
+    move_cursor(p.x, p.y);
+}
+
+// Releases the hidden pointer (putts, or cancels if it is on the ball) and
+// parks it off screen.
+static void release_cursor(void) {
+    send_event(SAPP_EVENTTYPE_MOUSE_UP, SAPP_MOUSEBUTTON_LEFT);
+    move_cursor(-10000, -10000);
 }
 
 static void pad_button(SDL_GameControllerButton button, bool down) {
-    using_pad = true;
     switch (button) {
         case SDL_CONTROLLER_BUTTON_A:
-            if (down && in_game_state(GOLF_GAME_STATE_WAITING_FOR_AIM)) {
-                move_cursor_to_ball();
+            if (in_menu()) {
+                if (down) golf_ui_nav_input(0, 0, true);
             }
-            send_event(down ? SAPP_EVENTTYPE_MOUSE_DOWN : SAPP_EVENTTYPE_MOUSE_UP, SAPP_MOUSEBUTTON_LEFT, 0);
+            else if (down && in_game_state(GOLF_GAME_STATE_WAITING_FOR_AIM)) {
+                move_cursor_to_ball();
+                send_event(SAPP_EVENTTYPE_MOUSE_DOWN, SAPP_MOUSEBUTTON_LEFT);
+            }
+            else if (!down) {
+                release_cursor();
+            }
             break;
         case SDL_CONTROLLER_BUTTON_B:
             if (!down) break;
             if (in_game_state(GOLF_GAME_STATE_AIMING)) {
                 // Zero power: releasing on the ball goes back to waiting for aim.
                 move_cursor_to_ball();
-                send_event(SAPP_EVENTTYPE_MOUSE_UP, SAPP_MOUSEBUTTON_LEFT, 0);
+                release_cursor();
             }
             else if (in_game_state(GOLF_GAME_STATE_PAUSED)) {
                 golf_game_resume();
@@ -104,6 +124,9 @@ static void pad_button(SDL_GameControllerButton button, bool down) {
             else if (in_game_state(GOLF_GAME_STATE_PAUSED)) {
                 golf_game_resume();
             }
+            else if (in_menu()) {
+                golf_ui_nav_input(0, 0, true);
+            }
             break;
         default:
             break;
@@ -117,21 +140,41 @@ static void pad_update(SDL_GameController *pad, float dt) {
     if (SDL_GameControllerGetButton(pad, SDL_CONTROLLER_BUTTON_DPAD_RIGHT)) dx += 0.5f;
     if (SDL_GameControllerGetButton(pad, SDL_CONTROLLER_BUTTON_DPAD_UP)) dy -= 0.5f;
     if (SDL_GameControllerGetButton(pad, SDL_CONTROLLER_BUTTON_DPAD_DOWN)) dy += 0.5f;
-    if (dx != 0 || dy != 0) {
-        using_pad = true;
-        // Slower while aiming, for finer control of the shot power.
-        float speed = (in_game_state(GOLF_GAME_STATE_AIMING) ? 0.45f : 0.9f) * win_h;
-        cursor_x = fminf(fmaxf(cursor_x + dx * speed * dt, 0), (float)(win_w - 1));
-        cursor_y = fminf(fmaxf(cursor_y + dy * speed * dt, 0), (float)(win_h - 1));
-        send_event(SAPP_EVENTTYPE_MOUSE_MOVE, SAPP_MOUSEBUTTON_INVALID, 0);
+
+    // Menus: one step per press, repeating while held.
+    static int last_nx, last_ny;
+    static float repeat_t;
+    int nx = fabsf(dx) >= 0.25f && fabsf(dx) >= fabsf(dy) ? (dx > 0 ? 1 : -1) : 0;
+    int ny = fabsf(dy) >= 0.25f && fabsf(dy) > fabsf(dx) ? (dy > 0 ? 1 : -1) : 0;
+    if (!in_menu() || (nx == 0 && ny == 0)) {
+        last_nx = last_ny = 0;
     }
+    else if (nx != last_nx || ny != last_ny) {
+        golf_ui_nav_input(nx, ny, false);
+        last_nx = nx;
+        last_ny = ny;
+        repeat_t = 0.35f;
+    }
+    else if ((repeat_t -= dt) <= 0) {
+        golf_ui_nav_input(nx, ny, false);
+        repeat_t = 0.12f;
+    }
+
+    // Aiming: pull the hidden pointer back from the ball.
+    if (in_game_state(GOLF_GAME_STATE_AIMING) && (dx != 0 || dy != 0)) {
+        float speed = 0.45f * win_h;
+        move_cursor(fminf(fmaxf(cursor_x + dx * speed * dt, 0), (float)(win_w - 1)),
+                fminf(fmaxf(cursor_y + dy * speed * dt, 0), (float)(win_h - 1)));
+    }
+
+    bool playing = in_game_state(GOLF_GAME_STATE_WAITING_FOR_AIM) ||
+        in_game_state(GOLF_GAME_STATE_AIMING) || in_game_state(GOLF_GAME_STATE_WATCHING_BALL);
+    golf_game_t *game = golf_game_get();
 
     float rotate = stick(pad, SDL_CONTROLLER_AXIS_RIGHTX);
     if (SDL_GameControllerGetButton(pad, SDL_CONTROLLER_BUTTON_LEFTSHOULDER)) rotate -= 1;
     if (SDL_GameControllerGetButton(pad, SDL_CONTROLLER_BUTTON_RIGHTSHOULDER)) rotate += 1;
-    if (rotate != 0 && (in_game_state(GOLF_GAME_STATE_WAITING_FOR_AIM) ||
-                in_game_state(GOLF_GAME_STATE_AIMING) || in_game_state(GOLF_GAME_STATE_WATCHING_BALL))) {
-        golf_game_t *game = golf_game_get();
+    if (rotate != 0 && playing) {
         game->cam.auto_rotate = false;
         game->cam.angle_velocity = 0;
         game->cam.angle += 1.5f * rotate * dt;
@@ -139,29 +182,8 @@ static void pad_update(SDL_GameController *pad, float dt) {
 
     float raise = (SDL_GameControllerGetAxis(pad, SDL_CONTROLLER_AXIS_TRIGGERRIGHT) -
             SDL_GameControllerGetAxis(pad, SDL_CONTROLLER_AXIS_TRIGGERLEFT)) / 32767.0f;
-    if (fabsf(raise) > 0.2f && (in_game_state(GOLF_GAME_STATE_WAITING_FOR_AIM) ||
-                in_game_state(GOLF_GAME_STATE_AIMING) || in_game_state(GOLF_GAME_STATE_WATCHING_BALL))) {
-        golf_game_t *game = golf_game_get();
+    if (fabsf(raise) > 0.2f && playing) {
         game->cam.height = fminf(fmaxf(game->cam.height + 1.5f * raise * dt, 1.0f), 3.0f);
-    }
-
-    float scroll = stick(pad, SDL_CONTROLLER_AXIS_RIGHTY);
-    if (scroll != 0) {
-        send_event(SAPP_EVENTTYPE_MOUSE_SCROLL, SAPP_MOUSEBUTTON_INVALID, -20.0f * scroll * dt);
-    }
-
-    // Draw the cursor on menus only; in game the aim line shows it.
-    bool playing = golf_get()->state == GOLF_STATE_IN_GAME &&
-        !in_game_state(GOLF_GAME_STATE_PAUSED) && !in_game_state(GOLF_GAME_STATE_FINISHED);
-    igGetIO()->MouseDrawCursor = using_pad && !playing;
-}
-
-static sapp_mousebutton mouse_button(Uint8 button) {
-    switch (button) {
-        case SDL_BUTTON_LEFT: return SAPP_MOUSEBUTTON_LEFT;
-        case SDL_BUTTON_RIGHT: return SAPP_MOUSEBUTTON_RIGHT;
-        case SDL_BUTTON_MIDDLE: return SAPP_MOUSEBUTTON_MIDDLE;
-        default: return SAPP_MOUSEBUTTON_INVALID;
     }
 }
 
@@ -193,17 +215,13 @@ int main(int argc, char *argv[]) {
         return 1;
     }
     SDL_GL_SetSwapInterval(1);
-    if (!window_env) {
-        SDL_ShowCursor(SDL_DISABLE);
-    }
+    SDL_ShowCursor(SDL_DISABLE);
     SDL_GL_GetDrawableSize(window, &win_w, &win_h);
-    cursor_x = 0.5f * win_w;
-    cursor_y = 0.5f * win_h;
+    cursor_x = cursor_y = -10000;
 
     golf_alloc_init();
     golf_log_init();
     init();
-    igGetStyle()->MouseCursorScale = win_h / 300.0f;
 
     SDL_GameController *pad = NULL;
     uint64_t last_time = stm_now();
@@ -227,20 +245,6 @@ int main(int argc, char *argv[]) {
                 case SDL_CONTROLLERBUTTONDOWN:
                 case SDL_CONTROLLERBUTTONUP:
                     pad_button((SDL_GameControllerButton)e.cbutton.button, e.type == SDL_CONTROLLERBUTTONDOWN);
-                    break;
-                case SDL_MOUSEMOTION:
-                    cursor_x = (float)e.motion.x;
-                    cursor_y = (float)e.motion.y;
-                    using_pad = false;
-                    send_event(SAPP_EVENTTYPE_MOUSE_MOVE, SAPP_MOUSEBUTTON_INVALID, 0);
-                    break;
-                case SDL_MOUSEBUTTONDOWN:
-                case SDL_MOUSEBUTTONUP:
-                    send_event(e.type == SDL_MOUSEBUTTONDOWN ? SAPP_EVENTTYPE_MOUSE_DOWN : SAPP_EVENTTYPE_MOUSE_UP,
-                            mouse_button(e.button.button), 0);
-                    break;
-                case SDL_MOUSEWHEEL:
-                    send_event(SAPP_EVENTTYPE_MOUSE_SCROLL, SAPP_MOUSEBUTTON_INVALID, (float)e.wheel.y);
                     break;
             }
         }

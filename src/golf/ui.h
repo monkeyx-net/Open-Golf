@@ -53,5 +53,10 @@ typedef struct golf_ui {
 golf_ui_t *golf_ui_get(void);
 void golf_ui_init(void);
 void golf_ui_update(float dt);
+#ifdef GOLF_PORTMASTER
+// Gamepad menu navigation: move the focus (dx/dy = -1, 0, 1) or press the
+// focused button. Applied on the next golf_ui_update.
+void golf_ui_nav_input(int dx, int dy, bool press);
+#endif
 
 #endif

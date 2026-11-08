@@ -426,6 +426,85 @@ static bool _golf_ui_pt_in_box(vec2 pt, vec2 pos, vec2 size) {
         (pos.y + 0.5f * size.y >= pt.y);
 }
 
+#ifdef GOLF_PORTMASTER
+// Gamepad navigation: each frame the menu buttons (and unlocked levels)
+// register in drawing order; the focused one is drawn pressed and is
+// clicked by A/Start. D-pad/stick moves the focus to the nearest button in
+// that direction. The focus resets when the screen changes.
+#define NAV_MAX_ITEMS 64
+static struct {
+    int count, focus, preferred, screen;
+    vec2 pos[NAV_MAX_ITEMS], size[NAV_MAX_ITEMS];
+    int dx, dy;
+    bool press;
+    float t;
+} nav = { .focus = -1, .preferred = -1, .screen = -1 };
+
+void golf_ui_nav_input(int dx, int dy, bool press) {
+    nav.dx = dx;
+    nav.dy = dy;
+    nav.press = nav.press || press;
+}
+
+// Registers a focusable item; returns its index.
+static int _golf_ui_nav_item(vec2 pos, vec2 size) {
+    if (nav.count >= NAV_MAX_ITEMS) return -1;
+    nav.pos[nav.count] = pos;
+    nav.size[nav.count] = size;
+    return nav.count++;
+}
+
+static void _golf_ui_nav_state(int idx, bool *down, bool *clicked) {
+    *down = idx >= 0 && idx == nav.focus;
+    *clicked = *down && nav.press && !ui.fade_out.active;
+}
+
+static void _golf_ui_nav_begin_frame(void) {
+    int screen = 100 * golf->state + 2 * game->state + (ui.main_menu.is_level_select_open ? 1 : 0);
+    if (screen != nav.screen) {
+        nav.screen = screen;
+        nav.focus = -1;
+    }
+    nav.count = 0;
+    nav.preferred = -1;
+}
+
+static void _golf_ui_nav_end_frame(float dt) {
+    // pulsing white overlay on the focused item
+    nav.t += dt;
+    if (nav.focus >= 0 && nav.focus < nav.count && !ui.fade_out.active) {
+        golf_texture_t *texture = golf_data_get_texture("data/textures/colors/black.png");
+        float alpha = 0.25f + 0.1f * sinf(6.0f * nav.t);
+        _golf_ui_texture_draw(texture, nav.pos[nav.focus], nav.size[nav.focus], V4(1, 1, 1, 1), alpha);
+    }
+
+    if (nav.focus < 0 || nav.focus >= nav.count) {
+        nav.focus = nav.preferred >= 0 ? nav.preferred : (nav.count > 0 ? 0 : -1);
+    }
+    else if (nav.dx || nav.dy) {
+        // nearest item in the pressed direction; sideways distance counts double
+        vec2 p = nav.pos[nav.focus];
+        int from = nav.focus;
+        float best = 1e9f;
+        for (int i = 0; i < nav.count; i++) {
+            float along = nav.dx * (nav.pos[i].x - p.x) + nav.dy * (nav.pos[i].y - p.y);
+            float across = nav.dx ? fabsf(nav.pos[i].y - p.y) : fabsf(nav.pos[i].x - p.x);
+            if (i == nav.focus || along < 1) continue;
+            float score = along + 2 * across;
+            if (score < best) {
+                best = score;
+                nav.focus = i;
+            }
+        }
+        if (nav.focus != from) {
+            golf_audio_start_sound("nav_move", "data/audio/drop_001.ogg", 0.5f, false, true);
+        }
+    }
+    nav.dx = nav.dy = 0;
+    nav.press = false;
+}
+#endif
+
 static void _golf_ui_button(vec2 pos, vec2 size, bool *down, bool *clicked) {
     if (ui.fade_out.active) {
         *down = false;
@@ -468,7 +547,17 @@ static bool _golf_ui_button_name(golf_ui_layout_t *layout, const char *name) {
     vec_golf_ui_layout_entity_t entities;
 
     bool down, clicked;
+#ifdef GOLF_PORTMASTER
+    // In game, Start pauses; the pause button is only drawn.
+    if (strcmp(name, "pause_button") == 0) {
+        down = clicked = false;
+    }
+    else {
+        _golf_ui_nav_state(_golf_ui_nav_item(pos, size), &down, &clicked);
+    }
+#else
     _golf_ui_button(pos, size, &down, &clicked);
+#endif
 
     if (down) {
         entities = entity->button.down_entities;
@@ -824,9 +913,30 @@ static int _golf_ui_level_select_scroll_box_name(golf_ui_layout_t *layout, const
             button_pos.y += entity->level_select_scroll_box.down_delta;
 
             bool button_down, button_clicked;
+#ifdef GOLF_PORTMASTER
+            button_down = button_clicked = false;
+            if (!locked) {
+                int idx = _golf_ui_nav_item(button_pos, button_size);
+                nav.preferred = idx; // open on the furthest unlocked level
+                _golf_ui_nav_state(idx, &button_down, &button_clicked);
+                if (button_down) {
+                    // scroll so the focused level is inside the box
+                    float top = bg_pos.y - 0.5f * bg_size.y, bottom = bg_pos.y + 0.5f * bg_size.y;
+                    float d = entity->level_select_scroll_box.down_delta;
+                    if (button_pos.y - 0.5f * button_size.y < top) d += top - (button_pos.y - 0.5f * button_size.y);
+                    if (button_pos.y + 0.5f * button_size.y > bottom) d -= (button_pos.y + 0.5f * button_size.y) - bottom;
+                    if (d > 0) d = 0;
+                    if (d < -total_height) d = -total_height;
+                    entity->level_select_scroll_box.down_delta = d;
+                }
+            }
+            GOLF_UNUSED(down_in_bg);
+            GOLF_UNUSED(clicked_in_bg);
+#else
             _golf_ui_button(button_pos, button_size, &button_down, &button_clicked);
             button_down = !locked && button_down && down_in_bg;
             button_clicked = !locked && button_clicked && clicked_in_bg;
+#endif
 
             golf_pixel_pack_t *pixel_pack = entity->level_select_scroll_box.button_pixel_pack;
             const char *square_name;
@@ -1267,6 +1377,9 @@ static void _golf_ui_in_game(float dt) {
 
 void golf_ui_update(float dt) {
     ui.draw_entities.length = 0;
+#ifdef GOLF_PORTMASTER
+    _golf_ui_nav_begin_frame();
+#endif
 
 #if (GOLF_PLATFORM_WINDOWS || GOLF_PLATFORM_LINUX) && !GOLF_PORTMASTER
     {
@@ -1317,4 +1430,8 @@ void golf_ui_update(float dt) {
 
         ui.fade_out.t += dt;
     }
+
+#ifdef GOLF_PORTMASTER
+    _golf_ui_nav_end_frame(dt);
+#endif
 }
