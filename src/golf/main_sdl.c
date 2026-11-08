@@ -5,6 +5,7 @@
 //   A                   click (in game: grab the ball, pull back, release to shoot)
 //   B                   cancel the shot / back
 //   L1/R1, right stick  rotate the camera (right stick up/down scrolls lists)
+//   L2/R2               lower / raise the camera
 //   Start               pause / resume
 #include <math.h>
 #include <stdlib.h>
@@ -134,6 +135,14 @@ static void pad_update(SDL_GameController *pad, float dt) {
         game->cam.auto_rotate = false;
         game->cam.angle_velocity = 0;
         game->cam.angle += 1.5f * rotate * dt;
+    }
+
+    float raise = (SDL_GameControllerGetAxis(pad, SDL_CONTROLLER_AXIS_TRIGGERRIGHT) -
+            SDL_GameControllerGetAxis(pad, SDL_CONTROLLER_AXIS_TRIGGERLEFT)) / 32767.0f;
+    if (fabsf(raise) > 0.2f && (in_game_state(GOLF_GAME_STATE_WAITING_FOR_AIM) ||
+                in_game_state(GOLF_GAME_STATE_AIMING) || in_game_state(GOLF_GAME_STATE_WATCHING_BALL))) {
+        golf_game_t *game = golf_game_get();
+        game->cam.height = fminf(fmaxf(game->cam.height + 1.5f * raise * dt, 1.0f), 3.0f);
     }
 
     float scroll = stick(pad, SDL_CONTROLLER_AXIS_RIGHTY);

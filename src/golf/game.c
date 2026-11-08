@@ -109,6 +109,7 @@ void golf_game_init(void) {
     game.cam.auto_rotate = true;
     game.cam.angle = 0;
     game.cam.angle_velocity = 0;
+    game.cam.height = 1.5f;
 
     game.ball.pos = V3(0, 0, 0);
     game.ball.draw_pos = V3(0, 0, 0);
@@ -827,7 +828,7 @@ void golf_game_update(float dt) {
                 game.cam.angle += delta_angle * CFG_NUM(game_cfg, "cam_auto_rotate_speed");
             }
 
-            vec3 cam_delta = vec3_rotate_y(V3(2.6f, 1.5f, 0), game.cam.angle);
+            vec3 cam_delta = vec3_rotate_y(V3(2.6f, game.cam.height, 0), game.cam.angle);
             vec3 wanted_pos = vec3_add(game.ball.draw_pos, cam_delta);
             vec3 diff = vec3_sub(wanted_pos, graphics->cam_pos);
             graphics->cam_pos = vec3_add(graphics->cam_pos, vec3_scale(diff, 0.5f));
@@ -959,6 +960,7 @@ void golf_game_start_level(void) {
     game.cam.auto_rotate = true;
     game.cam.angle = _golf_game_get_camera_zone_angle(ball_start_pos);
     game.cam.angle_velocity = 0;
+    game.cam.height = 1.5f;
 
     game.physics.time_behind = 0;
 
@@ -971,7 +973,7 @@ void golf_game_start_level(void) {
     game.begin_camera_animation.cam_pos0 = begin_animation_pos;
     game.begin_camera_animation.cam_dir0 = vec3_normalize(vec3_sub(hole_pos, game.begin_camera_animation.cam_pos0));
 
-    vec3 cam_delta = vec3_rotate_y(V3(2.6f, 1.5f, 0), game.cam.angle);
+    vec3 cam_delta = vec3_rotate_y(V3(2.6f, game.cam.height, 0), game.cam.angle);
     game.begin_camera_animation.cam_pos1 = vec3_add(game.ball.draw_pos, cam_delta);
     game.begin_camera_animation.cam_dir1 = vec3_normalize(vec3_sub(vec3_add(game.ball.draw_pos, V3(0, 0.3f, 0)), game.begin_camera_animation.cam_pos1));
 

@@ -521,8 +521,10 @@ static void _golf_ui_aim_circle_name(golf_ui_layout_t *layout, const char *name,
     vec2 pos = golf_graphics_world_to_screen(game->ball.pos);
     ui.aim_circle.pos = pos;
 
-    if (!vec2_equal(graphics->viewport_size, ui.aim_circle.viewport_size_when_set)) {
+    if (!vec2_equal(graphics->viewport_size, ui.aim_circle.viewport_size_when_set) ||
+            game->cam.height != ui.aim_circle.cam_height_when_set) {
         ui.aim_circle.viewport_size_when_set = graphics->viewport_size;
+        ui.aim_circle.cam_height_when_set = game->cam.height;
         vec3 dir = vec3_normalize(vec3_cross(graphics->cam_dir, graphics->cam_up));
         vec2 pos0 = golf_graphics_world_to_screen(vec3_add(game->ball.pos, vec3_scale(dir, 2 * game->ball.radius)));
         ui.aim_circle.size = vec2_distance(pos0, pos);
