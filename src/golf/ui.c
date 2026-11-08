@@ -1036,15 +1036,25 @@ static void _golf_ui_tutorial_name(golf_ui_layout_t *layout, const char *name, i
     golf_string_t text_3 = entity->tutorial.text_3;
     golf_string_t text_4 = entity->tutorial.text_4;
     golf_string_t text_5 = entity->tutorial.text_5;
+    const char *t1 = text_1.cstr, *t2 = text_2.cstr, *t3 = text_3.cstr, *t4 = text_4.cstr, *t5 = text_5.cstr;
+#ifdef GOLF_PORTMASTER
+    // Gamepad wording; the dragging hand is not drawn.
+    t1 = "Hold A and pull back";
+    t2 = "to aim and set the power.";
+    t3 = "Release A to hit the ball.";
+    t4 = "L1/R1 rotate the camera,";
+    t5 = "L2/R2 zoom in and out.";
+#endif
     vec4 text_color = entity->tutorial.text_color;
     vec4 bg_color = entity->tutorial.bg_color;
 
     _golf_ui_texture_draw(black_texture, pos, size, bg_color, bg_color.w);
 
     if (step == 0) {
-        _golf_ui_draw_text(font, text_1_pos, text_size, text_color, 0, 0, text_1.cstr, 1);
-        _golf_ui_draw_text(font, text_2_pos, text_size, text_color, 0, 0, text_2.cstr, 1);
+        _golf_ui_draw_text(font, text_1_pos, text_size, text_color, 0, 0, t1, 1);
+        _golf_ui_draw_text(font, text_2_pos, text_size, text_color, 0, 0, t2, 1);
 
+#ifndef GOLF_PORTMASTER
         {
             float a = entity->tutorial.pointer_t / entity->tutorial.pointer_1_time;
             vec2 p0 = entity->tutorial.pointer_1_p0;
@@ -1062,14 +1072,16 @@ static void _golf_ui_tutorial_name(golf_ui_layout_t *layout, const char *name, i
                 entity->tutorial.pointer_t = 0;
             }
         }
+#endif
     }
     else if (step == 1) {
-        _golf_ui_draw_text(font, pos, text_size, text_color, 0, 0, text_3.cstr, 1);
+        _golf_ui_draw_text(font, pos, text_size, text_color, 0, 0, t3, 1);
     }
     else if (step == 2) {
-        _golf_ui_draw_text(font, text_1_pos, text_size, text_color, 0, 0, text_4.cstr, 1);
-        _golf_ui_draw_text(font, text_2_pos, text_size, text_color, 0, 0, text_5.cstr, 1);
+        _golf_ui_draw_text(font, text_1_pos, text_size, text_color, 0, 0, t4, 1);
+        _golf_ui_draw_text(font, text_2_pos, text_size, text_color, 0, 0, t5, 1);
 
+#ifndef GOLF_PORTMASTER
         {
             float a = entity->tutorial.pointer_t / entity->tutorial.pointer_2_time;
             vec2 p0 = entity->tutorial.pointer_2_p0;
@@ -1087,6 +1099,7 @@ static void _golf_ui_tutorial_name(golf_ui_layout_t *layout, const char *name, i
                 entity->tutorial.pointer_t = 0;
             }
         }
+#endif
     }
 }
 
